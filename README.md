@@ -2,7 +2,7 @@
 
 **Consola portátil de videojuegos basada en ESP32-S3**, desarrollada como proyecto final de la asignatura de Processadors Digitals (UPC, 2026).
 
-> Noel Medina & Bernat Figuerola — ESUPC
+> Noel Medina & Bernat Figuerola — ESEIAAT
 
 ---
 
@@ -113,8 +113,8 @@ La consola expone un servidor MCP que permite a los modelos de lenguaje consulta
 
 | Juego | Repositorio | Descripción |
 |-------|------------|-------------|
-| 🏎 Road Rush | [road_rush_espectro](https://github.com/USUARI/road_rush_espectro) | Juego de carreras — esquiva obstáculos y acelera con el joystick |
-| 🟦 Tetris | [tetris_espectro](https://github.com/USUARI/tetris_espectro) | Tetris clásico — piezas, líneas y puntuación |
+| 🏎 Road Rush | [road_rush_espectro](https://github.com/bf_upc/road_rush_espectro) | Juego de carreras — esquiva obstáculos y acelera con el joystick |
+| 🟦 Tetris | [tetris_espectro](https://github.com/bf_upc/tetris_espectro) | Tetris clásico — piezas, líneas y puntuación |
 
 ---
 
@@ -123,13 +123,14 @@ La consola expone un servidor MCP que permite a los modelos de lenguaje consulta
 ```
 base_espectro/
 ├── README.md
-├── template/
+├── PLANTILLA_JUEGOS/
 │   ├── src/
 │   │   └── main.cpp        ← template para nuevos juegos
 │   ├── platformio.ini
-│   └── README.md           ← documentación para desarrolladores
+│   └── README.md           ← documentación para desarrolladores (como hacer juegos)
 ├── mcp/
-│   ├── espectro_mcp.py     ← puente Ollama ↔ ESPectro
+│   ├── mcp_ollama.py     ← puente Ollama ↔ ESPectro
+│   ├── start_mcp_bridge.sh     ← script para linux 
 │   └── requirements.txt
 └── docs/
     ├── memoria_tecnica.pdf
@@ -158,14 +159,15 @@ El juego aparece automáticamente en el dashboard sin ninguna configuración adi
 ```bash
 # Instalar dependencias
 pip install -r mcp/requirements.txt
-
+# Descargar el modelo llama3.2:3b
+ollama pull llama3.2:3b
 # Parar Ollama y reiniciar forzando CPU
 pkill ollama
 CUDA_VISIBLE_DEVICES="" ollama serve &
 sleep 3
 
 # Ejecutar el puente
-python3 mcp/espectro_mcp.py
+python3 mcp/mcp_ollama.py
 ```
 
 Ejemplos de preguntas:
@@ -181,7 +183,7 @@ Requisitos: **PlatformIO** y la librería `lovyan03/LovyanGFX @ ^1.1.12`.
 
 ```bash
 # Clonar un juego
-git clone https://github.com/USUARI/road_rush_espectro
+git clone https://github.com/bf_upc/road_rush_espectro
 cd road_rush_espectro
 
 # Compilar y flashear
