@@ -1,5 +1,5 @@
 // ============================================================
-//  TEMPLATE JOC — Consola ESP32-S3
+//  TEMPLATE JOC — Consola ESPectro (ESP32-S3)
 //  Copia aquest fitxer i omple les seccions marcades amb TODO
 //
 //  INSTRUCCIONS:
@@ -8,11 +8,11 @@
 //  3. Compila i puja el .bin via Game Loader
 //
 //  NOTES IMPORTANTS:
-//  - NO canviïs la configuració de pantalla, pins ni WiFi
-//  - El menú principal i el Game Loader ja estan integrats
-//  - Usa saveRecord()/loadRecord() per guardar el rècord
-//  - El joc ha de tenir un punt de sortida (return a runGame())
-//    per tornar al menú quan l'usuari perdi o surti
+//  - NO canviïs les seccions marcades com NO MODIFICAR
+//  - El WiFi arrenca automàticament en segon pla (FreeRTOS)
+//  - El dashboard és accessible a http://192.168.4.1 sempre
+//  - Usa saveRecord(score) per guardar puntuació
+//  - runGame() ha de fer return per tornar al menú
 // ============================================================
 
 #include <Arduino.h>
@@ -71,13 +71,12 @@ LGFX tft;
 // ============================================================
 //  PINS — NO MODIFICAR
 // ============================================================
-#define JOY_X_PIN  5    // ADC eix X joystick
-#define JOY_Y_PIN  4    // ADC eix Y joystick
-#define JOY_SW_PIN 42   // Botó joystick (premut = LOW)
-#define BTN_A_PIN  40   // Botó A (premut = LOW)
-#define BTN_B_PIN  41   // Botó B (premut = LOW)
+#define JOY_X_PIN  5
+#define JOY_Y_PIN  4
+#define JOY_SW_PIN 42
+#define BTN_A_PIN  40
+#define BTN_B_PIN  41
 
-// Resolució pantalla
 #define SCREEN_W 320
 #define SCREEN_H 480
 
@@ -114,10 +113,7 @@ void audioInit() {
     i2s_zero_dma_buffer(I2S_PORT);
 }
 
-// Genera un to sinusoïdal
-// freq: freqüència en Hz (ex: 440.0 = La4)
-// durationMs: durada en mil·lisegons
-// volume: 0.0 a 1.0 (recomanat < 0.2 per evitar saturació)
+// To sinusoïdal — freq(Hz), durada(ms), volum(0.0-0.2)
 void playTone(float freq, int durationMs, float volume = 0.1f) {
     const int bufSize = 256;
     int16_t buf[bufSize * 2];
@@ -151,9 +147,6 @@ void playSilence(int durationMs) {
 // ============================================================
 //  SPLASH SCREEN — NO MODIFICAR
 // ============================================================
-#define SCREEN_W 320
-#define SCREEN_H 480
-
 void showSplash() {
     tft.fillScreen(TFT_BLACK);
     const uint16_t TARONJA = tft.color565(255, 80, 0);
@@ -182,12 +175,27 @@ void showSplash() {
 }
 
 // ============================================================
+//  FREERTOS — NO MODIFICAR
+// ============================================================
+// Sincronització:
+//   audioQueue  (Queue) — efectes de so des del joc a la tasca música
+//   recordMutex (Mutex) — protegeix NVS entre wifiTask i runGame()
+SemaphoreHandle_t recordMutex;
+volatile bool     wifiActiu = false;
+
+// ── WiFi / Game Loader ────────────────────────────────────────
+#define AP_SSID "ESPectro"
+#define AP_PASS "gameloader"
+#define AP_IP   "192.168.4.1"
+
+#define MAX_HISTORY 20
+
+// ── Clau del rècord — TODO: canvia pel nom del teu joc ───────
+#define RECORD_KEY "nom_joc"  // TODO ex: "snake", "pong", "tetris"
+
+// ============================================================
 //  RECORDS NVS — NO MODIFICAR
 // ============================================================
-// Clau del joc — TODO: canvia "nom_joc" pel nom del teu joc
-// ex: "snake", "pong", "tetris"
-#define RECORD_KEY "nom_joc"  // TODO: canvia això!
-
 int loadRecord() {
     nvs_handle_t h;
     nvs_flash_init();
@@ -199,42 +207,79 @@ int loadRecord() {
     return (int)r;
 }
 
+String loadHistory() {
+    nvs_handle_t h;
+    nvs_flash_init();
+    String hist = "[]";
+    String hkey = String(RECORD_KEY) + "_h";
+    if (nvs_open("records", NVS_READONLY, &h) == ESP_OK) {
+        size_t len = 0;
+        if (nvs_get_str(h, hkey.c_str(), nullptr, &len) == ESP_OK && len > 0) {
+            char* buf = new char[len];
+            nvs_get_str(h, hkey.c_str(), buf, &len);
+            hist = String(buf);
+            delete[] buf;
+        }
+        nvs_close(h);
+    }
+    return hist;
+}
+
+// Guarda sempre a l'historial; actualitza el màxim si cal
 void saveRecord(int score) {
     nvs_handle_t h;
     nvs_flash_init();
     if (nvs_open("records", NVS_READWRITE, &h) == ESP_OK) {
         int32_t current = 0;
         nvs_get_i32(h, RECORD_KEY, &current);
-        if (score > current) {
+        if (score > current)
             nvs_set_i32(h, RECORD_KEY, (int32_t)score);
-            nvs_commit(h);
+
+        String hkey = String(RECORD_KEY) + "_h";
+        String hist = "[]";
+        size_t len = 0;
+        if (nvs_get_str(h, hkey.c_str(), nullptr, &len) == ESP_OK && len > 0) {
+            char* buf = new char[len];
+            nvs_get_str(h, hkey.c_str(), buf, &len);
+            hist = String(buf);
+            delete[] buf;
         }
+        String inner = hist.substring(1, hist.length()-1);
+        String nova;
+        if (inner.length() == 0) {
+            nova = "[" + String(score) + "]";
+        } else {
+            int count = 1;
+            for (int i = 0; i < (int)inner.length(); i++)
+                if (inner[i] == ',') count++;
+            if (count >= MAX_HISTORY) {
+                int lc = inner.lastIndexOf(',');
+                inner = (lc >= 0) ? inner.substring(0, lc) : "";
+            }
+            nova = (inner.length() > 0)
+                ? "[" + String(score) + "," + inner + "]"
+                : "[" + String(score) + "]";
+        }
+        nvs_set_str(h, hkey.c_str(), nova.c_str());
+        nvs_commit(h);
         nvs_close(h);
     }
 }
 
 String getAllRecords() {
-    nvs_handle_t h;
-    nvs_flash_init();
-    String json = "{";
-    if (nvs_open("records", NVS_READONLY, &h) == ESP_OK) {
-        // TODO: afegeix aquí totes les claus de rècords que vulguis mostrar
-        int32_t val = 0;
-        nvs_get_i32(h, RECORD_KEY, &val);
-        json += "\"" + String(RECORD_KEY) + "\":" + String(val);
-        nvs_close(h);
+    if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        int32_t best = loadRecord();
+        String hist  = loadHistory();
+        xSemaphoreGive(recordMutex);
+        return "{\"" + String(RECORD_KEY) + "\":{\"best\":" + String(best) +
+               ",\"history\":" + hist + "}}";
     }
-    json += "}";
-    return json;
+    return "{\"" + String(RECORD_KEY) + "\":{\"best\":0,\"history\":[]}}";
 }
 
 // ============================================================
-//  WIFI / GAME LOADER — NO MODIFICAR
+//  DASHBOARD WEB — NO MODIFICAR
 // ============================================================
-#define AP_SSID "ESPectro"
-#define AP_PASS "gameloader"
-#define AP_IP   "192.168.4.1"
-
 WebServer server(80);
 
 const char PAGE_HTML[] PROGMEM = R"rawhtml(
@@ -243,62 +288,94 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Game Loader</title>
+<title>ESPectro — Dashboard</title>
 <style>
-  body{background:#111;color:#eee;font-family:monospace;display:flex;
-       flex-direction:column;align-items:center;justify-content:center;
-       min-height:100vh;margin:0;padding:1em;}
-  h1{color:#0f0;}
-  .box{background:#1a1a1a;border:1px solid #333;border-radius:12px;
-       padding:2em;max-width:420px;width:100%;}
-  input[type=file]{display:none;}
-  label.btn,button{display:inline-block;padding:0.7em 1.4em;margin:0.3em;
-    background:#0a0;color:#fff;border:none;border-radius:8px;
-    font-size:1em;font-family:monospace;cursor:pointer;}
-  #filename{color:#0f0;margin:0.5em 0;}
-  #progress{width:100%;background:#222;border-radius:6px;height:18px;
-            margin:1em 0;display:none;}
-  #bar{height:100%;width:0;background:#0a0;border-radius:6px;transition:width 0.3s;}
-  #status{color:#ff0;min-height:1.5em;}
-  .ok{color:#0f0!important;} .err{color:#f00!important;}
-  .records{background:#111;border:1px solid #333;border-radius:8px;
-           padding:1em;margin-top:1.5em;}
-  .records h3{color:#ff0;margin:0 0 0.5em;}
-  .rec-row{display:flex;justify-content:space-between;
-           border-bottom:1px solid #222;padding:0.3em 0;}
-  .rec-name{color:#aaa;} .rec-val{color:#0f0;font-weight:bold;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0d0d0d;color:#eee;font-family:'Courier New',monospace;
+     min-height:100vh;padding:1em;}
+h1{color:#ff5000;text-align:center;font-size:1.8em;letter-spacing:4px;
+   padding:0.5em 0;border-bottom:2px solid #ff5000;margin-bottom:1em;}
+h1 span{color:#fff;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:800px;margin:0 auto;}
+@media(max-width:600px){.grid{grid-template-columns:1fr;}}
+.card{background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:1.2em;}
+.card h2{color:#ff5000;font-size:0.9em;letter-spacing:2px;margin-bottom:0.8em;}
+.stat{display:flex;justify-content:space-between;align-items:center;
+      padding:0.4em 0;border-bottom:1px solid #222;}
+.stat:last-child{border:none;}
+.stat-label{color:#888;font-size:0.85em;}
+.stat-val{color:#0f0;font-weight:bold;font-size:1.1em;}
+.stat-val.gold{color:#ffd700;}
+.chart{margin-top:0.5em;}
+.chart-title{color:#888;font-size:0.75em;margin-bottom:0.5em;}
+.bars{display:flex;align-items:flex-end;gap:3px;height:80px;}
+.bar-wrap{display:flex;flex-direction:column;align-items:center;flex:1;}
+.bar{width:100%;background:#ff5000;border-radius:2px 2px 0 0;min-height:2px;}
+.bar-val{color:#888;font-size:0.55em;margin-top:2px;}
+input[type=file]{display:none;}
+label.btn,button.btn{display:inline-block;padding:0.6em 1.2em;margin:0.3em 0;
+  background:#ff5000;color:#fff;border:none;border-radius:6px;
+  font-size:0.9em;font-family:monospace;cursor:pointer;width:100%;}
+#filename{color:#ff5000;margin:0.4em 0;font-size:0.85em;min-height:1.2em;}
+#progress{width:100%;background:#222;border-radius:4px;height:12px;
+          margin:0.5em 0;display:none;}
+#bar{height:100%;width:0;background:#ff5000;border-radius:4px;transition:width 0.3s;}
+#status{min-height:1.5em;font-size:0.85em;color:#ff0;}
+.ok{color:#0f0!important;} .err{color:#f44!important;}
 </style>
 </head>
 <body>
-<div class="box">
-  <h1>🎮 Game Loader</h1>
-  <p>Puja el .bin compilat amb PlatformIO</p>
-  <label class="btn" for="file">📂 Triar .bin</label>
-  <input type="file" id="file" accept=".bin">
-  <div id="filename">Cap arxiu seleccionat</div>
-  <button onclick="upload()">⬆ Pujar joc</button>
-  <div id="progress"><div id="bar"></div></div>
-  <div id="status"></div>
-  <div class="records">
-    <h3>🏆 Rècords</h3>
-    <div id="recs">Carregant...</div>
+<h1><span>ESP</span>ectro — Dashboard</h1>
+<div class="grid">
+  <div class="card" id="card-game">
+    <h2 id="game-title">🎮 JOC</h2>
+    <div id="stats-game"><div class="stat"><span class="stat-label">Carregant...</span></div></div>
+    <hr style="border:none;border-top:1px solid #333;margin:0.8em 0;">
+    <div class="chart">
+      <div class="chart-title">Últimes partides</div>
+      <div class="bars" id="bars-game"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>⬆ Carregar joc</h2>
+    <label class="btn" for="file">📂 Triar .bin</label>
+    <input type="file" id="file" accept=".bin">
+    <div id="filename">Cap arxiu seleccionat</div>
+    <button class="btn" onclick="upload()">Pujar joc</button>
+    <div id="progress"><div id="bar"></div></div>
+    <div id="status"></div>
   </div>
 </div>
 <script>
+function avg(arr){return arr.length?Math.round(arr.reduce((a,b)=>a+b,0)/arr.length):0;}
+function renderGame(key,data){
+  const hist=data.history||[];
+  const best=data.best||0;
+  const mitjana=avg(hist);
+  document.getElementById('game-title').textContent='🎮 '+key.replace(/_/g,' ').toUpperCase();
+  document.getElementById('stats-game').innerHTML=`
+    <div class="stat"><span class="stat-label">🏆 Rècord</span><span class="stat-val gold">${best} pts</span></div>
+    <div class="stat"><span class="stat-label">🎮 Partides</span><span class="stat-val">${hist.length}</span></div>
+    <div class="stat"><span class="stat-label">📊 Mitjana</span><span class="stat-val">${mitjana} pts</span></div>
+    <div class="stat"><span class="stat-label">🕹 Darrera</span><span class="stat-val ${hist[0]===best&&best>0?'gold':''}">${hist[0]||0} pts</span></div>`;
+  const last10=hist.slice(0,10).reverse();
+  const maxVal=Math.max(...last10,1);
+  const barsDiv=document.getElementById('bars-game');
+  barsDiv.innerHTML=last10.length?last10.map(v=>{
+    const h=Math.round((v/maxVal)*70);
+    return`<div class="bar-wrap"><div class="bar" style="height:${h}px;background:${v===best&&best>0?'#ffd700':'#ff5000'}"></div><div class="bar-val">${v}</div></div>`;
+  }).join(''):'<span style="color:#555;font-size:0.8em">Sense dades</span>';
+}
+function load(){
+  fetch('/records').then(r=>r.json()).then(data=>{
+    const keys=Object.keys(data);
+    if(keys.length) renderGame(keys[0],data[keys[0]]);
+  }).catch(()=>{});
+}
+load();
+setInterval(load,10000);
 const fi=document.getElementById('file');
-fi.addEventListener('change',()=>{
-  document.getElementById('filename').textContent=fi.files[0]?.name||'Cap arxiu';
-});
-fetch('/records').then(r=>r.json()).then(data=>{
-  const d=document.getElementById('recs');
-  const e=Object.entries(data);
-  if(!e.length){d.innerHTML='<span style="color:#555">Cap rècord</span>';return;}
-  d.innerHTML=e.map(([k,v])=>
-    `<div class="rec-row">
-       <span class="rec-name">${k.replace(/_/g,' ').toUpperCase()}</span>
-       <span class="rec-val">${v} pts</span>
-     </div>`).join('');
-}).catch(()=>{document.getElementById('recs').textContent='Error';});
+fi.addEventListener('change',()=>{document.getElementById('filename').textContent=fi.files[0]?.name||'Cap arxiu';});
 function upload(){
   const file=fi.files[0];
   const status=document.getElementById('status');
@@ -309,20 +386,14 @@ function upload(){
   const xhr=new XMLHttpRequest();
   xhr.open('POST','/update',true);
   xhr.upload.onprogress=e=>{
-    if(e.lengthComputable){
-      const pct=Math.round(e.loaded/e.total*100);
-      prog.style.display='block';
-      bar.style.width=pct+'%';
-      status.textContent='Pujant... '+pct+'%';
-    }
+    if(e.lengthComputable){const pct=Math.round(e.loaded/e.total*100);prog.style.display='block';bar.style.width=pct+'%';status.textContent='Pujant... '+pct+'%';}
   };
   xhr.onload=()=>{
-    if(xhr.status===200){status.textContent='✅ Joc instal·lat. Reiniciant...';status.className='ok';}
+    if(xhr.status===200){status.textContent='✅ Instal·lat. Reiniciant...';status.className='ok';}
     else{status.textContent='❌ Error: '+xhr.responseText;status.className='err';}
   };
-  const fd=new FormData();
-  fd.append('firmware',file,file.name);
-  xhr.send(fd);
+  xhr.onerror=()=>{status.textContent='❌ Error connexió';status.className='err';};
+  const fd=new FormData();fd.append('firmware',file,file.name);xhr.send(fd);
 }
 </script>
 </body>
@@ -333,84 +404,66 @@ void handleRoot()    { server.send_P(200, "text/html", PAGE_HTML); }
 void handleRecords() { server.send(200, "application/json", getAllRecords()); }
 void handleUpdate()  {
     server.send(200, "text/plain", Update.hasError() ? "FALLO" : "OK");
-    delay(500);
-    ESP.restart();
+    delay(500); ESP.restart();
 }
 void handleUpdateUpload() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-        tft.fillRect(0,260,320,60,TFT_BLACK);
-        tft.setTextColor(TFT_YELLOW,TFT_BLACK);
-        tft.setTextSize(2);
-        tft.setCursor(10,270); tft.print("Rebent firmware...");
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH))
-            Update.printError(Serial);
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) Update.printError(Serial);
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
             Update.printError(Serial);
-        static size_t total = 0;
-        total += upload.currentSize;
-        tft.fillRect(10,300,constrain((int)(total/10000),0,100)*3,10,TFT_GREEN);
     } else if (upload.status == UPLOAD_FILE_END) {
-        if (Update.end(true)) {
-            tft.fillRect(0,260,320,60,TFT_BLACK);
-            tft.setTextColor(TFT_GREEN,TFT_BLACK);
-            tft.setTextSize(2);
-            tft.setCursor(10,270); tft.print("Joc instal·lat!");
-            tft.setCursor(10,295); tft.print("Reiniciant...");
-        } else { Update.printError(Serial); }
+        if (!Update.end(true)) Update.printError(Serial);
     }
 }
 
+// ── Tasca WiFi (core 0, prioritat 1) ─────────────────────────
+void wifiTask(void* param) {
+    while (true) {
+        if (wifiActiu) server.handleClient();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+// ============================================================
+//  GAME LOADER — NO MODIFICAR
+// ============================================================
 void runGameLoader() {
     tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextColor(tft.color565(255,80,0), TFT_BLACK);
     tft.setTextSize(3);
-    tft.setCursor(30, 40);   tft.print("GAME LOADER");
+    tft.setCursor(30, 40); tft.print("GAME LOADER");
     tft.drawFastHLine(10, 88, 300, TFT_DARKGREY);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextSize(2);
-    tft.setCursor(10, 108);  tft.print("Xarxa WiFi:");
+    tft.setCursor(10, 108); tft.print("Xarxa WiFi:");
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.setCursor(10, 130);  tft.print(AP_SSID);
+    tft.setCursor(10, 130); tft.print(AP_SSID);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setCursor(10, 158);  tft.print("Contrasenya:");
+    tft.setCursor(10, 158); tft.print("Contrasenya:");
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.setCursor(10, 180);  tft.print(AP_PASS);
+    tft.setCursor(10, 180); tft.print(AP_PASS);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setCursor(10, 210);  tft.print("Obre al navegador:");
+    tft.setCursor(10, 210); tft.print("Obre al navegador:");
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    tft.setCursor(10, 232);  tft.printf("http://%s", AP_IP);
+    tft.setCursor(10, 232); tft.printf("http://%s", AP_IP);
     tft.drawFastHLine(10, 256, 300, TFT_DARKGREY);
-    tft.setTextColor(tft.color565(150,150,150), TFT_BLACK);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
     tft.setTextSize(1);
-    tft.setCursor(10, 440);  tft.print("Prem A per tornar al menu");
-
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASS);
-    WiFi.softAPConfig(
-        IPAddress(192,168,4,1),
-        IPAddress(192,168,4,1),
-        IPAddress(255,255,255,0)
-    );
-    server.on("/",        HTTP_GET,  handleRoot);
-    server.on("/records", HTTP_GET,  handleRecords);
-    server.on("/update",  HTTP_POST, handleUpdate, handleUpdateUpload);
-    server.begin();
+    tft.setCursor(10, 268); tft.print("RECORD:");
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(10, 282);
+    tft.printf("%s: %d pts", RECORD_KEY, loadRecord());
+    tft.setTextColor(tft.color565(150,150,150), TFT_BLACK);
+    tft.setCursor(10, 440); tft.print("Prem A per tornar al menu");
 
     while (true) {
-        server.handleClient();
         if (digitalRead(BTN_A_PIN) == LOW) {
-            tft.fillScreen(TFT_BLACK);
-            tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.setTextSize(2);
-            tft.setCursor(60, 220); tft.print("Tornant...");
-            delay(500);
-            server.stop();
-            WiFi.mode(WIFI_OFF);
-            ESP.restart();
+            delay(300);
+            return;
         }
-        delay(10);
+        delay(20);
     }
 }
 
@@ -423,12 +476,10 @@ void drawMenu(int bestScore) {
     // TODO: canvia el títol del teu joc
     tft.setTextColor(tft.color565(255,60,0), TFT_BLACK);
     tft.setTextSize(4);
-    const char* linia1 = "NOM";   // TODO: primera línia del títol
-    const char* linia2 = "JOC";   // TODO: segona línia del títol
-    tft.setCursor(SCREEN_W/2 - tft.textWidth(linia1)/2, 50);
-    tft.print(linia1);
-    tft.setCursor(SCREEN_W/2 - tft.textWidth(linia2)/2, 100);
-    tft.print(linia2);
+    const char* linia1 = "NOM";   // TODO
+    const char* linia2 = "JOC";   // TODO
+    tft.setCursor(SCREEN_W/2 - tft.textWidth(linia1)/2, 50);  tft.print(linia1);
+    tft.setCursor(SCREEN_W/2 - tft.textWidth(linia2)/2, 100); tft.print(linia2);
 
     tft.drawFastHLine(40, 158, 240, tft.color565(255,60,0));
 
@@ -444,7 +495,6 @@ void drawMenu(int bestScore) {
     tft.setTextSize(2);
     tft.setCursor(SCREEN_W/2 - tft.textWidth("Prem A per jugar")/2, 250);
     tft.print("Prem A per jugar");
-
     tft.setCursor(SCREEN_W/2 - tft.textWidth("Prem B per carregar")/2, 290);
     tft.print("Prem B per carregar");
     tft.setCursor(SCREEN_W/2 - tft.textWidth("un nou joc")/2, 312);
@@ -453,36 +503,33 @@ void drawMenu(int bestScore) {
 
 // ============================================================
 //  TODO: VARIABLES GLOBALS DEL JOC
-//  Declara aquí les variables que necessita el teu joc
 // ============================================================
-// exemple:
+// Declara aquí les variables del teu joc:
 // int score = 0;
 // int playerX = SCREEN_W / 2;
 // bool gameRunning = true;
 
 // ============================================================
-//  TODO: FUNCIONS DEL JOC
-//  Implementa aquí la lògica del teu joc
+//  TODO: LÒGICA DEL JOC
 // ============================================================
-
-// TODO: inicialitza i executa el joc
-// Aquesta funció ha de fer return quan el jugador perdi o vulgui sortir
 void runGame() {
     int bestScore = loadRecord();
 
-    // TODO: inicialitza el teu joc aquí
-    // exemple:
-    // score = 0;
+    // TODO: inicialitza el teu joc
     // tft.fillScreen(TFT_BLACK);
+    // score = 0;
 
-    // TODO: bucle principal del joc
+    unsigned long lastFrame = millis();
+
     while (true) {
+        // Control de framerate (~50fps)
+        if (millis() - lastFrame < 20) continue;
+        lastFrame = millis();
 
         // TODO: llegir controls
         // int rawX = analogRead(JOY_X_PIN);  // 0-4095, centre ~2048
-        // int rawY = analogRead(JOY_Y_PIN);  // 0-4095, centre ~2048
+        // int rawY = analogRead(JOY_Y_PIN);
         // bool btnA = (digitalRead(BTN_A_PIN) == LOW);
-        // bool btnB = (digitalRead(BTN_B_PIN) == LOW);
         // bool joyBtn = (digitalRead(JOY_SW_PIN) == LOW);
 
         // TODO: lògica del joc
@@ -492,18 +539,17 @@ void runGame() {
         // ...
         // tft.endWrite();
 
-        // TODO: quan el joc acaba, guarda el rècord i surt
+        // TODO: fi de joc -> guardar i tornar al menú
         // if (gameOver) {
-        //     if (score > bestScore) saveRecord(score);
-        //     return;  // <- torna al menú principal
+        //     if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        //         saveRecord(score);
+        //         xSemaphoreGive(recordMutex);
+        //     }
+        //     return;
         // }
 
-        // Exemple de sortida amb botó B
-        if (digitalRead(BTN_B_PIN) == LOW) {
-            return;  // torna al menú
-        }
-
-        delay(20);  // ~50fps
+        // Sortir amb botó B
+        if (digitalRead(BTN_B_PIN) == LOW) return;
     }
 }
 
@@ -522,9 +568,29 @@ void setup() {
     tft.setRotation(2);
     tft.setBrightness(255);
 
+    recordMutex = xSemaphoreCreateMutex();
     audioInit();
-    // Si el teu joc usa música en tasca FreeRTOS, descomenta:
+
+    // Tasca música — core 0, prioritat 2
+    // Descomenta si el teu joc usa música FreeRTOS:
     // xTaskCreatePinnedToCore(musicTask, "music", 4096, NULL, 2, NULL, 0);
+
+    // Tasca WiFi — core 0, prioritat 1
+    xTaskCreatePinnedToCore(wifiTask, "wifi", 4096, NULL, 1, NULL, 0);
+
+    // Iniciar WiFi en segon pla
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASS);
+    WiFi.softAPConfig(
+        IPAddress(192,168,4,1),
+        IPAddress(192,168,4,1),
+        IPAddress(255,255,255,0)
+    );
+    server.on("/",        HTTP_GET,  handleRoot);
+    server.on("/records", HTTP_GET,  handleRecords);
+    server.on("/update",  HTTP_POST, handleUpdate, handleUpdateUpload);
+    server.begin();
+    wifiActiu = true;
 
     showSplash();
 }
@@ -533,6 +599,7 @@ void setup() {
 //  LOOP — NO MODIFICAR
 // ============================================================
 void loop() {
+    tft.fillScreen(TFT_BLACK);
     int best = loadRecord();
     drawMenu(best);
 
@@ -545,6 +612,7 @@ void loop() {
         if (digitalRead(BTN_B_PIN) == LOW) {
             delay(50);
             runGameLoader();
+            break;
         }
         delay(20);
     }
