@@ -1,12 +1,8 @@
 # ESPectro 🎮
-<p align="center">
-  <img src="docs/img/consola.png" width="45%">
-  <img src="docs/img/componentes.png" width="45%">
-</p>
 
 **Consola portátil de videojuegos basada en ESP32-S3**, desarrollada como proyecto final de la asignatura de Processadors Digitals (UPC, 2026).
 
-> Noel Medina & Bernat Figuerola — ESEIAAT
+> Noel Medina & Bernat Figuerola — ESUPC
 
 ---
 
@@ -27,7 +23,7 @@ El sistema permite cargar nuevos juegos sin cables — directamente desde el nav
 | Joystick | HW-504 analógico |
 | Audio | MAX98357A I2S + altavoz 8Ω |
 | Botones | 2× táctil 6×6mm |
-| Carcasa | PLA impreso en 3D |
+| Carcasa | PLA impreso en 3D — diseño propio |
 
 ### Pines de conexión
 
@@ -129,13 +125,16 @@ base_espectro/
 ├── README.md
 ├── PLANTILLA_JUEGOS/
 │   ├── src/
-│   │   └── main.cpp        ← template para nuevos juegos
+│   │   └── main.cpp        ← PLANTILLA_JUEGOS para nuevos juegos
 │   ├── platformio.ini
-│   └── README.md           ← documentación para desarrolladores (como hacer juegos)
+│   └── README.md           ← documentación para desarrolladores
 ├── mcp/
 │   ├── mcp_ollama.py     ← puente Ollama ↔ ESPectro
-│   ├── start_mcp_bridge.sh     ← script para linux 
+│   ├── start_mcp_bridge.sh  ← script linux
 │   └── requirements.txt
+├── 3D/
+│   ├── front.stl         ← carcasa frontal (impresión 3D)
+│   └── back.stl            ← carcasa trasera (impresión 3D)
 └── docs/
     ├── memoria_tecnica.pdf
     ├── esquema_electrico.pdf
@@ -144,12 +143,29 @@ base_espectro/
 
 ---
 
+## Carcasa 3D
+
+El diseño de la carcasa está disponible en la carpeta [`3D/`](3D/) en formato STL, listo para imprimir.
+
+| Archivo | Descripción |
+|---------|------------|
+| `frontal.stl` | Parte frontal — pantalla, joystick y botones |
+| `back.stl` | Parte trasera — ESP32 y altavoz |
+
+**Parámetros de impresión recomendados:**
+- Material: PLA
+- Relleno: 20%
+- Soportes: No necesarios
+- Tornillería: M2×25 (unión frontal/trasera), M3×6 (pantalla), M2×6 (joystick)
+
+---
+
 ## Crear un nuevo juego
 
-Consulta [`template/README.md`](template/README.md) para las instrucciones completas.
+Consulta [`PLANTILLA_JUEGOS/README.md`](PLANTILLA_JUEGOS/README.md) para las instrucciones completas.
 
 Resumen:
-1. Copia `template/src/main.cpp` a tu proyecto
+1. Copia `PLANTILLA_JUEGOS/src/main.cpp` a tu proyecto
 2. Rellena los 4 `TODO` (clave del récord, título, variables, lógica)
 3. Compila con PlatformIO
 4. Sube el `.bin` vía Game Loader
@@ -163,7 +179,7 @@ El juego aparece automáticamente en el dashboard sin ninguna configuración adi
 ```bash
 # Instalar dependencias
 pip install -r mcp/requirements.txt
-# Descargar el modelo llama3.2:3b
+# Instalar modelo necesario
 ollama pull llama3.2:3b
 # Parar Ollama y reiniciar forzando CPU
 pkill ollama
@@ -171,7 +187,7 @@ CUDA_VISIBLE_DEVICES="" ollama serve &
 sleep 3
 
 # Ejecutar el puente
-python3 mcp/mcp_ollama.py
+python3 mcp/espectro_mcp.py
 ```
 
 Ejemplos de preguntas:
@@ -208,4 +224,3 @@ pio device monitor
 | ADC | HW-504 | Joystick analógico |
 
 ---
-
