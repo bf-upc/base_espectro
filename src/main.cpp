@@ -418,6 +418,65 @@ void handleUpdateUpload() {
     }
 }
 
+// ============================================================
+//  HANDLERS MCP — NO MODIFICAR
+// ============================================================
+void handleMcpTools() {
+    String json = "{"tools":["
+        "{"name":"get_records","
+         ""description":"Retorna els records i historial de puntuacions de tots els jocs de la consola ESPectro","
+         ""inputSchema":{"type":"object","properties":{}}},"
+        "{"name":"get_status","
+         ""description":"Retorna l'estat actual de la consola: uptime, memoria lliure i versio","
+         ""inputSchema":{"type":"object","properties":{}}},"
+        "{"name":"get_system_info","
+         ""description":"Retorna informacio tecnica del hardware: CPU, memoria PSRAM, frequencia i chip","
+         ""inputSchema":{"type":"object","properties":{}}}"
+        "]}";
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", json);
+}
+
+void handleMcpGetRecords() {
+    String records = getAllRecords();
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json",
+        "{"content":[{"type":"text","text":" + records + "}]}");
+}
+
+void handleMcpGetStatus() {
+    unsigned long uptime = millis() / 1000;
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json",
+        "{"content":[{"type":"text","text":{"
+        ""uptime_s":" + String(uptime) + ","
+        ""free_heap_bytes":" + String(ESP.getFreeHeap()) + ","
+        ""wifi_ssid":"ESPectro","
+        ""ip":"192.168.4.1","
+        ""version":"1.0.0"}}]}");
+}
+
+void handleMcpGetSystemInfo() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json",
+        "{"content":[{"type":"text","text":{"
+        ""chip":"ESP32-S3","
+        ""cpu_freq_mhz":" + String(ESP.getCpuFreqMHz()) + ","
+        ""flash_size_mb":" + String(ESP.getFlashChipSize()/1024/1024) + ","
+        ""free_heap_bytes":" + String(ESP.getFreeHeap()) + ","
+        ""free_psram_bytes":" + String(ESP.getFreePsram()) + ","
+        ""sdk_version":"" + String(ESP.getSdkVersion()) + ""}}]}");
+}
+
+void handleMcpCall() {
+    String tool = server.arg("tool");
+    if      (tool == "get_records")     handleMcpGetRecords();
+    else if (tool == "get_status")      handleMcpGetStatus();
+    else if (tool == "get_system_info") handleMcpGetSystemInfo();
+    else server.send(404, "application/json",
+             "{"error":"Tool no trobada: " + tool + ""}");
+}
+
 // ── Tasca WiFi (core 0, prioritat 1) ─────────────────────────
 void wifiTask(void* param) {
     while (true) {
@@ -589,6 +648,9 @@ void setup() {
     server.on("/",        HTTP_GET,  handleRoot);
     server.on("/records", HTTP_GET,  handleRecords);
     server.on("/update",  HTTP_POST, handleUpdate, handleUpdateUpload);
+    // Endpoints MCP
+    server.on("/mcp/tools",      HTTP_GET, handleMcpTools);
+    server.on("/mcp/tools/call", HTTP_GET, handleMcpCall);
     server.begin();
     wifiActiu = true;
 
