@@ -6,17 +6,17 @@ Template per desenvolupar jocs per a la **consola portàtil ESPectro** basada en
 
 ## Índex
 
-1. [Arquitectura del sistema](#arquitectura)
+1. [Arquitectura del sistema](#arquitectura-del-sistema)
 2. [Requisits](#requisits)
-3. [Instruccions per a humans](#humans)
-4. [Instruccions per a LLMs](#llms)
-5. [API de hardware](#api)
-6. [Exemple mínim](#exemple)
-7. [Pujar el joc a la consola](#upload)
+3. [Instruccions per a humans](#instruccions-per-a-humans)
+4. [Instruccions per a LLMs](#instruccions-per-a-llms)
+5. [API de hardware](#api-de-hardware)
+6. [Exemple mínim](#exemple-mínim)
+7. [Pujar el joc a la consola](#pujar-el-joc-a-la-consola)
 
 ---
 
-## [Arquitectura del sistema](#arquitectura)
+## Arquitectura del sistema
 
 ```
 firmware.bin = launcher + joc (tot en un sol fitxer)
@@ -39,7 +39,7 @@ Cada joc és un firmware complet que inclou el launcher. Quan puges un joc nou v
 
 ---
 
-## [Requisits] (#requisits)
+## Requisits
 
 **Hardware:**
 - ESP32-S3-DevKitC-1 N16R8
@@ -65,7 +65,7 @@ lib_deps =
 
 ---
 
-## [Instruccions per a humans] (#humans)
+## Instruccions per a humans
 
 ### Pas 1 — Copia la template
 Copia `template_joc.cpp` al teu projecte PlatformIO com a `src/main.cpp`.
@@ -116,7 +116,7 @@ O via Game Loader (veure [Pujar el joc](#upload)).
 
 ---
 
-## [Instruccions per a LLMs] (#llms)
+## Instruccions per a LLMs
 
 > Aquesta secció explica com generar un joc complet per a la consola ESPectro a partir de la template.
 
@@ -202,7 +202,7 @@ Volum recomanat: `0.07f` per música de fons, `0.10f` per efectes puntuals. Mai 
 
 ---
 
-## [API de hardware] (#api)
+## API de hardware
 
 ### Pantalla
 
@@ -293,7 +293,7 @@ int best = loadRecord();
 
 ---
 
-## [Exemple mínim] (#exemple)
+## Exemple mínim
 
 Joc on un quadre es mou per la pantalla amb el joystick i has d'aguantar el màxim de temps:
 
@@ -359,12 +359,12 @@ void runGame() {
 
 ---
 
-## [Pujar el joc a la consola](#upload)
+## Pujar el joc a la consola
 
 1. Compila el projecte: `pio run`
 2. El fitxer generat és: `.pio/build/rymcu-esp32-s3-devkitc-1/firmware.bin`
 3. A la consola, prem el **botó B** al menú per entrar al Game Loader
-4. Connecta't a la xarxa WiFi **ESPectro** (contrasenya: **gameloader**)
+4. Connecta't a la xarxa WiFi **Consola-ESP32** (contrasenya: **gameloader**)
 5. Obre el navegador a **http://192.168.4.1**
 6. Selecciona el `firmware.bin` i prem "Pujar joc"
 7. La consola reinicia amb el nou joc
