@@ -225,8 +225,27 @@ String loadHistory() {
     return hist;
 }
 
+void registerGame(const char* key) {
+    nvs_handle_t h;
+    nvs_flash_init();
+    if (nvs_open("records", NVS_READWRITE, &h) == ESP_OK) {
+        char buf[256] = "";
+        size_t len = sizeof(buf);
+        nvs_get_str(h, "game_list", buf, &len);
+        String list = String(buf);
+        if (list.indexOf(key) < 0) {
+            if (list.length() > 0) list += ",";
+            list += key;
+            nvs_set_str(h, "game_list", list.c_str());
+            nvs_commit(h);
+        }
+        nvs_close(h);
+    }
+}
+
 // Guarda sempre a l'historial; actualitza el màxim si cal
 void saveRecord(int score) {
+    registerGame(RECORD_KEY);
     nvs_handle_t h;
     nvs_flash_init();
     if (nvs_open("records", NVS_READWRITE, &h) == ESP_OK) {
@@ -327,13 +346,9 @@ label.btn,button.btn{display:inline-block;padding:0.6em 1.2em;margin:0.3em 0;
 <body>
 <h1><span>ESP</span>ectro — Dashboard</h1>
 <div class="grid">
-  <div class="card" id="card-game">
-    <h2 id="game-title">🎮 JOC</h2>
-    <div id="stats-game"><div class="stat"><span class="stat-label">Carregant...</span></div></div>
-    <hr style="border:none;border-top:1px solid #333;margin:0.8em 0;">
-    <div class="chart">
-      <div class="chart-title">Últimes partides</div>
-      <div class="bars" id="bars-game"></div>
+  <div id="games-col">
+    <div id="games-container">
+      <div class="card"><span style="color:#555">Carregant...</span></div>
     </div>
   </div>
   <div class="card">
@@ -352,24 +367,29 @@ function renderGame(key,data){
   const hist=data.history||[];
   const best=data.best||0;
   const mitjana=avg(hist);
-  document.getElementById('game-title').textContent='🎮 '+key.replace(/_/g,' ').toUpperCase();
-  document.getElementById('stats-game').innerHTML=`
-    <div class="stat"><span class="stat-label">🏆 Rècord</span><span class="stat-val gold">${best} pts</span></div>
-    <div class="stat"><span class="stat-label">🎮 Partides</span><span class="stat-val">${hist.length}</span></div>
-    <div class="stat"><span class="stat-label">📊 Mitjana</span><span class="stat-val">${mitjana} pts</span></div>
-    <div class="stat"><span class="stat-label">🕹 Darrera</span><span class="stat-val ${hist[0]===best&&best>0?'gold':''}">${hist[0]||0} pts</span></div>`;
+  const darrera=hist[0]||0;
   const last10=hist.slice(0,10).reverse();
   const maxVal=Math.max(...last10,1);
-  const barsDiv=document.getElementById('bars-game');
-  barsDiv.innerHTML=last10.length?last10.map(v=>{
+  const bars=last10.length?last10.map(v=>{
     const h=Math.round((v/maxVal)*70);
     return`<div class="bar-wrap"><div class="bar" style="height:${h}px;background:${v===best&&best>0?'#ffd700':'#ff5000'}"></div><div class="bar-val">${v}</div></div>`;
   }).join(''):'<span style="color:#555;font-size:0.8em">Sense dades</span>';
+  return`<div class="card" style="margin-bottom:1em">
+    <h2>${key.replace(/_/g,' ').toUpperCase()}</h2>
+    <div class="stat"><span class="stat-label">Record</span><span class="stat-val gold">${best} pts</span></div>
+    <div class="stat"><span class="stat-label">Partides</span><span class="stat-val">${hist.length}</span></div>
+    <div class="stat"><span class="stat-label">Mitjana</span><span class="stat-val">${mitjana} pts</span></div>
+    <div class="stat"><span class="stat-label">Darrera</span><span class="stat-val ${darrera===best&&best>0?'gold':''}">${darrera} pts</span></div>
+    <div class="chart"><div class="chart-title">Ultimes partides</div>
+    <div class="bars">${bars}</div></div>
+  </div>`;
 }
 function load(){
   fetch('/records').then(r=>r.json()).then(data=>{
-    const keys=Object.keys(data);
-    if(keys.length) renderGame(keys[0],data[keys[0]]);
+    const entries=Object.entries(data);
+    const container=document.getElementById('games-container');
+    if(!entries.length){container.innerHTML='<div class="card"><span style="color:#555">Cap joc registrat</span></div>';return;}
+    container.innerHTML=entries.map(([k,d])=>renderGame(k,d)).join('');
   }).catch(()=>{});
 }
 load();
