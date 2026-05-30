@@ -1,5 +1,8 @@
 # ESPectro 🎮
-
+<p align="center">
+  <img src="docs/img/consola.png" width="45%">
+  <img src="docs/img/componentes.png" width="45%">
+</p>
 **Consola portátil de videojuegos basada en ESP32-S3**, desarrollada como proyecto final de la asignatura de Processadors Digitals (UPC, 2026).
 
 > Noel Medina & Bernat Figuerola — ESUPC
