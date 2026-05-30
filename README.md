@@ -1,6 +1,6 @@
 # ESPectro 🎮
 ![ESPectro](docs/img/consola.png)
-![Componentes](docs/img/consola.png)
+![Componentes](docs/img/componentes.png)
 
 **Consola portátil de videojuegos basada en ESP32-S3**, desarrollada como proyecto final de la asignatura de Processadors Digitals (UPC, 2026).
 
