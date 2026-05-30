@@ -11,8 +11,9 @@ Template per desenvolupar jocs per a la **consola portàtil ESPectro** basada en
 3. [Instruccions per a humans](#instruccions-per-a-humans)
 4. [Instruccions per a LLMs](#instruccions-per-a-llms)
 5. [API de hardware](#api-de-hardware)
-6. [Exemple mínim](#exemple-mínim)
-7. [Pujar el joc a la consola](#pujar-el-joc-a-la-consola)
+6. [Dashboard i MCP](#dashboard-i-mcp)
+7. [Exemple mínim](#exemple-mínim)
+8. [Pujar el joc a la consola](#pujar-el-joc-a-la-consola)
 
 ---
 
@@ -31,11 +32,24 @@ Arrenca
         │
         └─ Botó B → Game Loader (WiFi AP)
                         │
+                        ├─ Dashboard amb rècords de tots els jocs
                         ├─ Puja nou .bin via navegador
                         └─ Botó A → torna al menú
 ```
 
-Cada joc és un firmware complet que inclou el launcher. Quan puges un joc nou via WiFi, sobreescriu l'anterior. Per tornar al menú des del joc, la funció `runGame()` ha de fer `return`.
+**FreeRTOS — 3 tasques concurrents:**
+
+| Tasca | Core | Prioritat | Funció |
+|-------|------|-----------|--------|
+| `musicTask` | 0 | 2 | Àudio I2S continu |
+| `wifiTask` | 0 | 1 | Servidor web en segon pla |
+| `loop()` | 1 | — | Joc, menú, lògica |
+
+**Sincronització:**
+- `audioQueue` (Queue) — efectes de so des del joc a `musicTask`
+- `recordMutex` (Mutex) — protegeix NVS entre `wifiTask` i `runGame()`
+
+**WiFi sempre actiu** des de l'arrencada — el dashboard és accessible a `http://192.168.4.1` en tot moment, fins i tot mentre jugues.
 
 ---
 
@@ -82,23 +96,18 @@ Posa el nom del teu joc en minúscules i sense espais. Exemple:
 ```cpp
 #define RECORD_KEY "snake"
 ```
+Aquesta clau s'usa per guardar el rècord a la NVS i apareix automàticament al dashboard.
 
 #### 2.2 Títol del menú
 ```cpp
 const char* linia1 = "NOM";   // TODO: primera línia del títol
 const char* linia2 = "JOC";   // TODO: segona línia del títol
 ```
-Exemple:
-```cpp
-const char* linia1 = "SUPER";
-const char* linia2 = "SNAKE";
-```
 
 #### 2.3 Variables globals del joc
 ```cpp
 // TODO: VARIABLES GLOBALS DEL JOC
 ```
-Declara aquí totes les variables que necessita el teu joc.
 
 #### 2.4 Lògica del joc dins de `runGame()`
 ```cpp
@@ -106,13 +115,22 @@ void runGame() {
     // TODO: implementa el teu joc aquí
 }
 ```
-Veure la secció [API de hardware](#api) per als controls i la pantalla.
 
-### Pas 3 — Compila i puja
+### Pas 3 — Guarda el rècord correctament
+Usa el mutex per protegir l'accés a la NVS:
+```cpp
+if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+    saveRecord(score);  // guarda SEMPRE, no només si és rècord
+    xSemaphoreGive(recordMutex);
+}
+```
+`saveRecord()` ja gestiona internament si ha de actualitzar el màxim o no.
+
+### Pas 4 — Compila i puja
 ```
 pio run --target upload
 ```
-O via Game Loader (veure [Pujar el joc](#upload)).
+O via Game Loader (veure [Pujar el joc a la consola](#pujar-el-joc-a-la-consola)).
 
 ---
 
@@ -122,17 +140,27 @@ O via Game Loader (veure [Pujar el joc](#upload)).
 
 ### Regles obligatòries
 
-1. **NO modificar** cap secció marcada com `// NO MODIFICAR`. Inclou: configuració de pantalla, pins, WiFi, Game Loader, menú principal, setup(), loop().
+1. **NO modificar** cap secció marcada com `// NO MODIFICAR`. Inclou: configuració de pantalla, pins, WiFi, FreeRTOS, Game Loader, menú principal, `setup()`, `loop()`.
 
-2. **Sempre fer `return`** al final de `runGame()` per tornar al menú. Mai usar `while(true)` sense condició de sortida al nivell principal.
+2. **Sempre fer `return`** al final de `runGame()` per tornar al menú. Mai usar `while(true)` sense condició de sortida.
 
 3. **`RECORD_KEY`** ha de ser una string única per joc, en minúscules, sense espais ni caràcters especials. Exemples vàlids: `"snake"`, `"pong"`, `"tetris_v2"`.
 
-4. **No usar `delay()` llargs** dins del bucle de joc — fa que els controls siguin irresponsables. Usar `millis()` per controlar el timing.
+4. **No usar `delay()` llargs** dins del bucle de joc. Usar `millis()` per controlar el timing.
 
 5. **La pantalla és de 320×480 píxels**, orientació vertical (portrait), rotació 2. L'origen (0,0) és a la cantonada superior esquerra.
 
-6. **L'àudio és síncron** — `playTone()` bloqueja l'execució. Per sons durant el joc, usar-los amb moderació o implementar una tasca FreeRTOS separada (veure exemple al Road Rush).
+6. **L'àudio és síncron** — `playTone()` bloqueja l'execució. Usar-lo amb moderació o implementar una `musicTask` FreeRTOS separada.
+
+7. **Guardar el rècord sempre** al final de la partida (no només si és millor), protegint amb `recordMutex`:
+```cpp
+if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+    saveRecord(score);
+    xSemaphoreGive(recordMutex);
+}
+```
+
+8. **El joc s'auto-registra al dashboard** — en cridar `saveRecord()` per primera vegada, el joc apareix automàticament al dashboard web sense cap configuració addicional.
 
 ### Estructura que ha de tenir `runGame()`
 
@@ -143,22 +171,22 @@ void runGame() {
 
     // 2. Inicialitzar variables del joc
     int score = 0;
-    // ... altres variables
 
     // 3. Dibuixar pantalla inicial
     tft.fillScreen(TFT_BLACK);
-    // ...
 
     // 4. Bucle principal
     unsigned long lastFrame = millis();
     while (true) {
 
-        // Control de framerate (recomanat 20-50ms per frame)
+        // Control de framerate (recomanat 20ms = ~50fps)
         if (millis() - lastFrame < 20) continue;
         lastFrame = millis();
 
         // 5. Llegir controls
-        // ...
+        int rawX = analogRead(JOY_X_PIN);
+        int rawY = analogRead(JOY_Y_PIN);
+        bool btnA = (digitalRead(BTN_A_PIN) == LOW);
 
         // 6. Lògica del joc
         // ...
@@ -168,11 +196,13 @@ void runGame() {
         // ...
         tft.endWrite();
 
-        // 8. Condició de fi de joc
+        // 8. Fi de joc -> guardar rècord i tornar al menú
         if (gameOver) {
-            if (score > bestScore) saveRecord(score);
-            // Mostrar pantalla game over
-            // Esperar botó
+            if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+                saveRecord(score);
+                xSemaphoreGive(recordMutex);
+            }
+            // Mostrar pantalla game over, esperar botó...
             return;  // <- OBLIGATORI per tornar al menú
         }
     }
@@ -181,11 +211,11 @@ void runGame() {
 
 ### Bones pràctiques de dibuix
 
-- Usar `tft.startWrite()` / `tft.endWrite()` per agrupar operacions de dibuix i maximitzar la velocitat.
-- **No fer `fillScreen()` cada frame** — és molt lent. Esborrar només les zones que canvien.
+- Usar `tft.startWrite()` / `tft.endWrite()` per agrupar operacions.
+- **No fer `fillScreen()` cada frame** — esborrar només les zones que canvien.
 - Per esborrar un sprite: `tft.fillRect(x, y, w, h, COLOR_FONS)` a la posició anterior.
 
-### Freqüències musicals de referència (rang recomanat: 200-600Hz)
+### Freqüències musicals (rang recomanat: 200-600Hz)
 
 | Nota | Freqüència |
 |------|-----------|
@@ -198,7 +228,7 @@ void runGame() {
 | C5   | 523.3 Hz  |
 | D5   | 587.3 Hz  |
 
-Volum recomanat: `0.07f` per música de fons, `0.10f` per efectes puntuals. Mai superar `0.25f`.
+Volum recomanat: `0.07f` música de fons, `0.10f` efectes. Mai superar `0.20f`.
 
 ---
 
@@ -207,11 +237,9 @@ Volum recomanat: `0.07f` per música de fons, `0.10f` per efectes puntuals. Mai 
 ### Pantalla
 
 ```cpp
-// Dimensions
 SCREEN_W = 320   // amplada en píxels
 SCREEN_H = 480   // alçada en píxels
 
-// Operacions bàsiques
 tft.fillScreen(color);
 tft.fillRect(x, y, w, h, color);
 tft.drawRect(x, y, w, h, color);
@@ -220,88 +248,130 @@ tft.drawLine(x0, y0, x1, y1, color);
 tft.drawFastHLine(x, y, w, color);
 tft.drawFastVLine(x, y, h, color);
 
-// Text
 tft.setTextSize(n);          // 1=petit, 2=mitjà, 3=gran, 4=molt gran
-tft.setTextColor(color, bg); // color text i fons
+tft.setTextColor(color, bg);
 tft.setCursor(x, y);
 tft.print("text");
 tft.printf("valor: %d", n);
-int w = tft.textWidth("text"); // amplada en píxels (útil per centrar)
+int w = tft.textWidth("text");
 
 // Colors predefinits
 TFT_BLACK, TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE
 TFT_YELLOW, TFT_CYAN, TFT_MAGENTA, TFT_DARKGREY
 
-// Color personalitzat (RGB)
-uint16_t color = tft.color565(r, g, b); // r,g,b: 0-255
+// Color personalitzat
+uint16_t color = tft.color565(r, g, b);  // r,g,b: 0-255
 
-// Agrupar operacions (millora rendiment)
+// Agrupar operacions (imprescindible per bon rendiment)
 tft.startWrite();
-// ... operacions de dibuix
+// ...
 tft.endWrite();
 ```
 
 ### Controls
 
 ```cpp
-// Joystick analògic (valors 0-4095, centre ~2048)
-int rawX = analogRead(JOY_X_PIN);  // esquerra < 1748 / dreta > 2348
-int rawY = analogRead(JOY_Y_PIN);  // amunt < 1748 / avall > 2348
-bool joyBtn = (digitalRead(JOY_SW_PIN) == LOW);  // botó joystick
+// Joystick analògic (0-4095, centre ~2048)
+int rawX = analogRead(JOY_X_PIN);   // esquerra < 1748 / dreta > 2348
+int rawY = analogRead(JOY_Y_PIN);   // amunt < 1748 / avall > 2348
+bool joyBtn = (digitalRead(JOY_SW_PIN) == LOW);
 
-// Botons digitals (LOW = premut, gràcies al pull-up intern)
+// Botons (LOW = premut)
 bool btnA = (digitalRead(BTN_A_PIN) == LOW);
 bool btnB = (digitalRead(BTN_B_PIN) == LOW);
 
-// Helper per obtenir direcció del joystick (-1, 0, 1)
-// Zona morta de 300 unitats al centre
-int dirX = 0;
-if (rawX < 1748) dirX = -1;
-else if (rawX > 2348) dirX = 1;
+// Obtenir direcció (-1, 0, 1)
+int dirX = (rawX < 1748) ? -1 : (rawX > 2348) ? 1 : 0;
+int dirY = (rawY < 1748) ? -1 : (rawY > 2348) ? 1 : 0;
 ```
 
 ### Àudio
 
 ```cpp
-// To sinusoïdal síncron
+// To sinusoïdal (síncron — bloqueja l'execució)
 playTone(float freq, int durationMs, float volume);
-// freq: freqüència en Hz
-// durationMs: durada en ms
-// volume: 0.0 a 0.25 (recomanat 0.07-0.15)
 
 // Silenci
 playSilence(int durationMs);
 
-// Exemple: efecte de so curt
-playTone(440.0f, 50, 0.10f);  // La4, 50ms
-
-// Exemple: melodia
-playTone(261.6f, 100, 0.10f); playSilence(20);  // C4
-playTone(329.6f, 100, 0.10f); playSilence(20);  // E4
-playTone(392.0f, 200, 0.12f);                   // G4
+// Exemple
+playTone(440.0f, 50, 0.10f);          // La4, 50ms
+playTone(261.6f, 100, 0.10f);         // C4
+playSilence(20);
+playTone(392.0f, 200, 0.12f);         // G4
 ```
 
-### Rècords (NVS — persisteix entre reinicis)
+### Rècords (NVS — persisteix entre reinicis i entre jocs)
 
 ```cpp
-// Guardar rècord (només escriu si és millor que l'anterior)
-saveRecord(int score);
+// Guardar rècord — sempre protegir amb mutex
+if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+    saveRecord(score);   // guarda a l'historial i actualitza el màxim si cal
+    xSemaphoreGive(recordMutex);
+}
 
-// Llegir rècord actual
+// Llegir rècord màxim
 int best = loadRecord();
 ```
+
+L'historial guarda les **últimes 20 partides** per joc. Apareix automàticament al dashboard web.
+
+---
+
+## Dashboard i MCP
+
+### Dashboard web
+
+Accessible a `http://192.168.4.1` mentre la consola està encesa (WiFi sempre actiu).
+
+Mostra per cada joc:
+- Rècord màxim
+- Nombre de partides jugades
+- Mitjana de puntuació
+- Darrera puntuació
+- Gràfica de barres de les últimes 10 partides
+
+Els jocs apareixen automàticament quan es guarda el primer rècord. No cal configurar res.
+
+### Endpoints MCP
+
+La consola exposa un servidor MCP per integrar-se amb LLMs (Ollama, etc.):
+
+| Endpoint | Descripció |
+|----------|-----------|
+| `GET /mcp/tools` | Llista les tools disponibles |
+| `GET /mcp/tools/call?tool=get_records` | Rècords i historial de tots els jocs |
+| `GET /mcp/tools/call?tool=get_status` | Uptime, memòria lliure, IP, versió |
+| `GET /mcp/tools/call?tool=get_system_info` | CPU, flash, PSRAM, SDK |
+
+### Ús amb Ollama
+
+```bash
+# Instal·lar dependències
+pip install ollama requests
+
+# Aturar Ollama i reiniciar forçant CPU (recomanat amb GPU petita)
+pkill ollama
+CUDA_VISIBLE_DEVICES="" ollama serve &
+sleep 3
+
+# Executar el pont MCP
+python3 espectro_mcp.py
+```
+
+Exemples de preguntes:
+- "Quin és el rècord del Road Rush?"
+- "Quantes partides s'han jugat en total?"
+- "Quant temps porta encesa la consola?"
+- "Quanta memòria lliure té l'ESP32?"
 
 ---
 
 ## Exemple mínim
 
-Joc on un quadre es mou per la pantalla amb el joystick i has d'aguantar el màxim de temps:
-
 ```cpp
-// Al lloc de les variables globals:
-int playerX, playerY;
-int score;
-bool gameRunning;
+// Variables globals:
+int playerX, playerY, score;
 
 // runGame():
 void runGame() {
@@ -309,7 +379,6 @@ void runGame() {
     playerX = SCREEN_W / 2;
     playerY = SCREEN_H / 2;
     score = 0;
-    gameRunning = true;
 
     tft.fillScreen(TFT_BLACK);
 
@@ -320,26 +389,20 @@ void runGame() {
         if (millis() - lastFrame < 20) continue;
         lastFrame = millis();
 
-        // Puntuació per temps
         if (millis() - lastScore > 1000) {
             lastScore = millis();
             score++;
         }
 
-        // Controls
         int rawX = analogRead(JOY_X_PIN);
         int rawY = analogRead(JOY_Y_PIN);
         int dirX = (rawX < 1748) ? -1 : (rawX > 2348) ? 1 : 0;
         int dirY = (rawY < 1748) ? -1 : (rawY > 2348) ? 1 : 0;
 
-        // Esborrar posició anterior
         tft.fillRect(playerX-10, playerY-10, 20, 20, TFT_BLACK);
-
-        // Moure jugador
         playerX = constrain(playerX + dirX * 4, 10, SCREEN_W-10);
         playerY = constrain(playerY + dirY * 4, 10, SCREEN_H-10);
 
-        // Dibuixar
         tft.startWrite();
         tft.fillRect(playerX-10, playerY-10, 20, 20, TFT_GREEN);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -348,9 +411,11 @@ void runGame() {
         tft.printf("Pts: %d  ", score);
         tft.endWrite();
 
-        // Sortir amb botó B
         if (digitalRead(BTN_B_PIN) == LOW) {
-            if (score > bestScore) saveRecord(score);
+            if (xSemaphoreTake(recordMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+                saveRecord(score);
+                xSemaphoreGive(recordMutex);
+            }
             return;
         }
     }
@@ -361,10 +426,10 @@ void runGame() {
 
 ## Pujar el joc a la consola
 
-1. Compila el projecte: `pio run`
-2. El fitxer generat és: `.pio/build/rymcu-esp32-s3-devkitc-1/firmware.bin`
-3. A la consola, prem el **botó B** al menú per entrar al Game Loader
-4. Connecta't a la xarxa WiFi **Consola-ESP32** (contrasenya: **gameloader**)
+1. Compila: `pio run`
+2. El binari és a: `.pio/build/rymcu-esp32-s3-devkitc-1/firmware.bin`
+3. Prem el **botó B** al menú per entrar al Game Loader
+4. Connecta't a la xarxa WiFi **ESPectro** (contrasenya: **gameloader**)
 5. Obre el navegador a **http://192.168.4.1**
 6. Selecciona el `firmware.bin` i prem "Pujar joc"
 7. La consola reinicia amb el nou joc
@@ -381,7 +446,7 @@ void runGame() {
 | 2 | TFT DC |
 | 1 | TFT CS |
 | 0 | TFT RST |
-| 39 | TFT BL (retroiluminació) |
+| 39 | TFT BL (retroil·luminació) |
 | 5 | Joystick VRX (eix X) |
 | 4 | Joystick VRY (eix Y) |
 | 42 | Joystick SW (botó) |
