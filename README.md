@@ -113,8 +113,8 @@ La consola expone un servidor MCP que permite a los modelos de lenguaje consulta
 
 | Juego | Repositorio | Descripción |
 |-------|------------|-------------|
-| 🏎 Road Rush | [road_rush_espectro](https://github.com/bf_upc/road_rush_espectro) | Juego de carreras — esquiva obstáculos y acelera con el joystick |
-| 🟦 Tetris | [tetris_espectro](https://github.com/bf_upc/tetris_espectro) | Tetris clásico — piezas, líneas y puntuación |
+| 🏎 Road Rush | [road_rush_espectro](https://github.com/bf-upc/road_rush_espectro) | Juego de carreras — esquiva obstáculos y acelera con el joystick |
+| 🟦 Tetris | [tetris_espectro](https://github.com/bf-upc/tetris_espectro) | Tetris clásico — piezas, líneas y puntuación |
 
 ---
 
@@ -183,7 +183,7 @@ Requisitos: **PlatformIO** y la librería `lovyan03/LovyanGFX @ ^1.1.12`.
 
 ```bash
 # Clonar un juego
-git clone https://github.com/bf_upc/road_rush_espectro
+git clone https://github.com/bf-upc/road_rush_espectro
 cd road_rush_espectro
 
 # Compilar y flashear
