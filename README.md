@@ -153,7 +153,7 @@ El diseño de la carcasa está disponible en la carpeta [`3D/`](3D/) en formato 
 
 | Archivo | Descripción |
 |---------|------------|
-| `frontal.stl` | Parte frontal — pantalla, joystick y botones |
+| `front.stl` | Parte frontal — pantalla, joystick y botones |
 | `back.stl` | Parte trasera — ESP32 y altavoz |
 
 **Parámetros de impresión recomendados:**
