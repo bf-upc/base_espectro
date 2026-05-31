@@ -580,6 +580,12 @@ void drawMenu(int bestScore) {
     tft.print("Prem B per carregar");
     tft.setCursor(SCREEN_W/2 - tft.textWidth("un nou joc")/2, 312);
     tft.print("un nou joc");
+    tft.setTextSize(1);
+    tft.fillCircle(SCREEN_W/2 - 105, 360, 4, wifiActiu ? verd : tft.color565(80,80,80));
+    tft.setTextColor(wifiActiu ? verd : tft.color565(120,120,120), TFT_BLACK);
+    const char* w = wifiActiu ? "WiFi actiu - ESPectro / 192.168.4.1" : "WiFi inactiu";
+    tft.setCursor(SCREEN_W/2 - 95, 356);
+    tft.print(w);
 }
 
 // ============================================================
