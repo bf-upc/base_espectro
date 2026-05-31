@@ -53,9 +53,9 @@ def get_esp_data() -> str:
             # Per als records, afegir recomptes explícits
             if name == "records":
                 for game, game_data in text.items():
-                    if isinstance(game_data, dict) and "history" in game_data:
-                        hist = game_data["history"]
-                        game_data["partides_jugades"] = len(hist)
+                    if isinstance(game_data, dict):
+                        hist = game_data.get("history", [])
+                        game_data["partides_jugades"] = game_data.get("total", len(hist))
                         if hist:
                             game_data["mitjana"] = round(sum(hist) / len(hist), 1)
                             game_data["darrera"] = hist[0]
