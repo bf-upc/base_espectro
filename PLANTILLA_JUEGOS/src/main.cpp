@@ -430,14 +430,30 @@ void handleUpdate()  {
 void handleUpdateUpload() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) Update.printError(Serial);
+        tft.fillRect(0, 260, 320, 60, TFT_BLACK);
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        tft.setTextSize(2);
+        tft.setCursor(10, 270);
+        tft.print("Rebent firmware...");
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH))
+            Update.printError(Serial);
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
             Update.printError(Serial);
+        static size_t total = 0;
+        total += upload.currentSize;
+        tft.fillRect(10, 300, constrain((int)(total/10000),0,100)*3, 10, TFT_GREEN);
     } else if (upload.status == UPLOAD_FILE_END) {
-        if (!Update.end(true)) Update.printError(Serial);
+        if (Update.end(true)) {
+            tft.fillRect(0, 260, 320, 60, TFT_BLACK);
+            tft.setTextColor(TFT_GREEN, TFT_BLACK);
+            tft.setTextSize(2);
+            tft.setCursor(10, 270); tft.print("Joc instal·lat!");
+            tft.setCursor(10, 295); tft.print("Reiniciant...");
+        } else { Update.printError(Serial); }
     }
 }
+
 
 // ============================================================
 //  HANDLERS MCP — NO MODIFICAR
