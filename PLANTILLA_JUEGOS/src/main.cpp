@@ -366,6 +366,7 @@ function avg(arr){return arr.length?Math.round(arr.reduce((a,b)=>a+b,0)/arr.leng
 function renderGame(key,data){
   const hist=data.history||[];
   const best=data.best||0;
+  const total=data.total!==undefined?data.total:hist.length;
   const mitjana=avg(hist);
   const darrera=hist[0]||0;
   const last10=hist.slice(0,10).reverse();
@@ -377,7 +378,7 @@ function renderGame(key,data){
   return`<div class="card" style="margin-bottom:1em">
     <h2>${key.replace(/_/g,' ').toUpperCase()}</h2>
     <div class="stat"><span class="stat-label">Record</span><span class="stat-val gold">${best} pts</span></div>
-    <div class="stat"><span class="stat-label">Partides</span><span class="stat-val">${hist.length}</span></div>
+    <div class="stat"><span class="stat-label">Partides</span><span class="stat-val">${total}</span></div>
     <div class="stat"><span class="stat-label">Mitjana</span><span class="stat-val">${mitjana} pts</span></div>
     <div class="stat"><span class="stat-label">Darrera</span><span class="stat-val ${darrera===best&&best>0?'gold':''}">${darrera} pts</span></div>
     <div class="chart"><div class="chart-title">Ultimes partides</div>
@@ -580,6 +581,7 @@ void drawMenu(int bestScore) {
     tft.print("Prem B per carregar");
     tft.setCursor(SCREEN_W/2 - tft.textWidth("un nou joc")/2, 312);
     tft.print("un nou joc");
+    uint16_t verd = tft.color565(0, 220, 40);
     tft.setTextSize(1);
     tft.fillCircle(SCREEN_W/2 - 105, 360, 4, wifiActiu ? verd : tft.color565(80,80,80));
     tft.setTextColor(wifiActiu ? verd : tft.color565(120,120,120), TFT_BLACK);
