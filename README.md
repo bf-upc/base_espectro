@@ -119,6 +119,7 @@ La consola expone un servidor MCP que permite a los modelos de lenguaje consulta
 |-------|------------|-------------|
 | 🏎 Road Rush | [road_rush_espectro](https://github.com/bf-upc/road_rush_espectro) | Juego de carreras — esquiva obstáculos y acelera con el joystick |
 | 🟦 Tetris | [tetris_espectro](https://github.com/bf-upc/tetris_espectro) | Tetris clásico — piezas, líneas y puntuación |
+| ♣️ Blackjack | [blackjack_espectro](https://github.com/bf-upc/blackjack_espectro) | Blackjack con baraja de poker y mecánica de apuestas |
 
 ---
 
