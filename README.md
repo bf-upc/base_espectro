@@ -147,7 +147,7 @@ base_espectro/
 │   └── back.stl            ← carcasa trasera (impresión 3D)
 └── docs/
     ├── memoria_tecnica.pdf
-    ├── esquema_electrico.pdf
+    ├── esquema_electrico.png
     └── img/
 ```
 
