@@ -120,6 +120,11 @@ La consola expone un servidor MCP que permite a los modelos de lenguaje consulta
 | 🏎 Road Rush | [road_rush_espectro](https://github.com/bf-upc/road_rush_espectro) | Juego de carreras — esquiva obstáculos y acelera con el joystick |
 | 🟦 Tetris | [tetris_espectro](https://github.com/bf-upc/tetris_espectro) | Tetris clásico — piezas, líneas y puntuación |
 | ♣️ Blackjack | [blackjack_espectro](https://github.com/bf-upc/blackjack_espectro) | Blackjack con baraja de poker y mecánica de apuestas |
+| ⭕ Tres en Ratlla | [tres_en_ratlla_ESPectro](https://github.com/nm-upc/tres_en_ratlla_ESPectro) | Tres en raya contra la IA con algoritmo minimax |
+| 🐸 Frogger | [frogger_ESPectro](https://github.com/nm-upc/frogger_ESPectro) | Cruza la carretera esquivando coches |
+| 🐍 Snake | [snake_ESPectro](https://github.com/nm-upc/snake_ESPectro) | Snake clásico — come manzanas y crece sin chocarte |
+| 🐦 Flappy Bird | [flappy_bird_ESPectro](https://github.com/nm-upc/flappy_bird_ESPectro) | Esquiva tuberías pulsando el botón A |
+| 💣 Buscaminas | [buscaminas_ESPectro](https://github.com/nm-upc/buscaminas_ESPectro) | Buscaminas clásico con joystick |
 
 ---
 
@@ -130,15 +135,15 @@ base_espectro/
 ├── README.md
 ├── PLANTILLA_JUEGOS/
 │   ├── src/
-│   │   └── main.cpp        ← PLANTILLA_JUEGOS para nuevos juegos
+│   │   └── main.cpp        ← plantilla para nuevos juegos
 │   ├── platformio.ini
 │   └── README.md           ← documentación para desarrolladores
 ├── mcp/
-│   ├── mcp_ollama.py     ← puente Ollama ↔ ESPectro
-│   ├── start_mcp_bridge.sh  ← script linux
+│   ├── mcp_ollama.py       ← puente Ollama ↔ ESPectro
+│   ├── start_mcp_bridge.sh ← script linux
 │   └── requirements.txt
 ├── 3D/
-│   ├── front.stl         ← carcasa frontal (impresión 3D)
+│   ├── front.stl           ← carcasa frontal (impresión 3D)
 │   └── back.stl            ← carcasa trasera (impresión 3D)
 └── docs/
     ├── memoria_tecnica.pdf
@@ -184,15 +189,17 @@ El juego aparece automáticamente en el dashboard sin ninguna configuración adi
 ```bash
 # Instalar dependencias
 pip install -r mcp/requirements.txt
+
 # Instalar modelo necesario
 ollama pull llama3.2:3b
+
 # Parar Ollama y reiniciar forzando CPU
 pkill ollama
 CUDA_VISIBLE_DEVICES="" ollama serve &
 sleep 3
 
 # Ejecutar el puente
-python3 mcp/espectro_mcp.py
+python3 mcp/mcp_ollama.py
 ```
 
 Ejemplos de preguntas:
@@ -229,3 +236,7 @@ pio device monitor
 | ADC | HW-504 | Joystick analógico |
 
 ---
+
+## Licencia
+
+MIT — libre para usar, modificar y distribuir.
